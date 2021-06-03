@@ -11,6 +11,8 @@
 package tree
 
 import (
+	"strings"
+
 	"github.com/cockroachdb/cockroach/pkg/sql/lexbase"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
@@ -31,8 +33,20 @@ type Name string
 // Format implements the NodeFormatter interface.
 func (n *Name) Format(ctx *FmtCtx) {
 	f := ctx.flags
+
+	if f.HasFlags(FmtEmojiAndAnon) {
+		if strings.Contains(n.String(), "a") {
+			ctx.WriteString(":)")
+		} else {
+			ctx.WriteByte('_')
+		}
+		return
+	}
+
 	if f.HasFlags(FmtAnonymize) && !isArityIndicatorString(string(*n)) {
 		ctx.WriteByte('_')
+	} else if f.HasFlags(FmtEmojiForA) && strings.Contains(n.String(), "a") {
+		ctx.WriteString(":)")
 	} else {
 		lexbase.EncodeRestrictedSQLIdent(&ctx.Buffer, string(*n), f.EncodeFlags())
 	}

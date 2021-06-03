@@ -137,6 +137,12 @@ const (
 	// rather than string literals. For example, the bytes \x40ab will be formatted
 	// as x'40ab' rather than '\x40ab'.
 	fmtFormatByteLiterals
+
+	// Mini-task from Raphael:
+	// Create a formatting flag that redacts all identifiers/keywords that include
+	// 'a' with an emoji
+	FmtEmojiForA
+	FmtEmojiAndAnon = FmtEmojiForA | FmtAnonymize
 )
 
 // PasswordSubstitution is the string that replaces

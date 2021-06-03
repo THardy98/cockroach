@@ -661,6 +661,20 @@ func scrubStmtStatKey(vt VirtualTabler, key string) (string, bool) {
 	return f.CloseAndGetString(), true
 }
 
+func emojiScrubStmtStatKey(vt VirtualTabler, key string) (string, bool) {
+	// Re-parse the statement to obtain its AST.
+	stmt, err := parser.ParseOne(key)
+	if err != nil {
+		return "", false
+	}
+
+	// Re-format to remove most names.
+	f := tree.NewFmtCtx(tree.FmtEmojiAndAnon)
+	f.SetReformatTableNames(replaceTableNameWithA(vt))
+	f.FormatNode(stmt.AST)
+	return f.CloseAndGetString(), true
+}
+
 func (s *sqlStats) getScrubbedStmtStats(
 	vt *VirtualSchemaHolder,
 ) []roachpb.CollectedStatementStatistics {

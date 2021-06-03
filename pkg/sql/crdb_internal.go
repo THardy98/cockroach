@@ -921,7 +921,8 @@ CREATE TABLE crdb_internal.node_statement_statistics (
 			// Now retrieve the per-stmt stats proper.
 			for _, stmtKey := range stmtKeys {
 				anonymized := tree.DNull
-				anonStr, ok := scrubStmtStatKey(p.getVirtualTabler(), stmtKey.anonymizedStmt)
+				// anonStr, ok := scrubStmtStatKey(p.getVirtualTabler(), stmtKey.anonymizedStmt)
+				anonStr, ok := emojiScrubStmtStatKey(p.getVirtualTabler(), stmtKey.anonymizedStmt)
 				if ok {
 					anonymized = tree.NewDString(anonStr)
 				}
