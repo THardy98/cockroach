@@ -407,3 +407,76 @@ func TestPlanDiagramJoin(t *testing.T) {
 
 	compareDiagrams(t, s, expected)
 }
+
+func TestTheThing(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	flows := make(map[roachpb.NodeID]*FlowSpec)
+
+	descA := &descpb.TableDescriptor{Name: "TableA"}
+	// TODO more info about the table
+
+	trA := TableReaderSpec{Table: *descA}
+	// TODO more details here about which index to scan, etc.
+
+	flows[1] = &FlowSpec{
+		Processors: []ProcessorSpec{
+			{
+				Core: ProcessorCoreUnion{TableReader: &trA},
+				Post: PostProcessSpec{
+					Projection:    true,
+					OutputColumns: []uint32{0, 1, 3},
+				},
+				Output:      []OutputRouterSpec{},
+				ProcessorID: 0,
+			},
+		},
+	}
+
+	flags := DiagramFlags{
+		ShowInputTypes: true,
+	}
+	diagram, err := GeneratePlanDiagram("SOME SQL HERE", flows, flags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, _, err := diagram.ToURL()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := `
+		{
+		  "sql":"SOME SQL HERE",
+			"nodeNames":["1","2","3","4"],
+			"processors":[
+				{"nodeIdx":0,"inputs":[],"core":{"title":"TableReader/0","details":["TableA@primary","Out: @1,@2,@4"]},"outputs":[{"title":"by hash","details":["@1,@2"]}],"stage":0},
+				{"nodeIdx":1,"inputs":[],"core":{"title":"TableReader/1","details":["TableA@primary","Out: @1,@2,@4"]},"outputs":[{"title":"by hash","details":["@1,@2"]}],"stage":0},
+				{"nodeIdx":1,"inputs":[{"title":"unordered","details":[]},{"title":"unordered","details":[]}],"core":{"title":"HashJoiner/2","details":["left(@1,@3)=right(@3,@2)","ON @1+@2\u003c@6","Out: @1,@2,@3,@4,@5,@6"]},"outputs":[],"stage":0},
+				{"nodeIdx":1,"inputs":[{"title":"unordered","details":[]}],"core":{"title":"No-op/3","details":[]},"outputs":[],"stage":0},
+				{"nodeIdx":2,"inputs":[],"core":{"title":"TableReader/4","details":["TableA@primary","Out: @1,@2,@4"]},"outputs":[{"title":"by hash","details":["@1,@2"]}],"stage":0},
+				{"nodeIdx":2,"inputs":[],"core":{"title":"TableReader/5","details":["TableB@primary","Out: @2,@3,@5"]},"outputs":[{"title":"by hash","details":["@3,@2"]}],"stage":0},
+				{"nodeIdx":2,"inputs":[{"title":"unordered","details":[]},{"title":"unordered","details":[]}],"core":{"title":"HashJoiner/6","details":["left(@1,@3)=right(@3,@2)","ON @1+@2\u003c@6"]},"outputs":[],"stage":0},
+				{"nodeIdx":3,"inputs":[],"core":{"title":"TableReader/7","details":["TableB@primary","Out: @2,@3,@5"]},"outputs":[{"title":"by hash","details":["@3,@2"]}],"stage":0},
+				{"nodeIdx":1,"inputs":[],"core":{"title":"Response","details":[]},"outputs":[],"stage":0}
+			],
+			"edges":[
+			  {"sourceProc":0,"sourceOutput":1,"destProc":2,"destInput":1},
+				{"sourceProc":0,"sourceOutput":1,"destProc":6,"destInput":1},
+				{"sourceProc":1,"sourceOutput":1,"destProc":2,"destInput":1},
+				{"sourceProc":1,"sourceOutput":1,"destProc":6,"destInput":1},
+				{"sourceProc":2,"sourceOutput":0,"destProc":3,"destInput":1},
+				{"sourceProc":3,"sourceOutput":0,"destProc":8,"destInput":0},
+				{"sourceProc":4,"sourceOutput":1,"destProc":2,"destInput":1},
+				{"sourceProc":4,"sourceOutput":1,"destProc":6,"destInput":1},
+				{"sourceProc":5,"sourceOutput":1,"destProc":2,"destInput":2},
+				{"sourceProc":5,"sourceOutput":1,"destProc":6,"destInput":2},
+				{"sourceProc":6,"sourceOutput":0,"destProc":3,"destInput":1},
+				{"sourceProc":7,"sourceOutput":1,"destProc":2,"destInput":2},
+				{"sourceProc":7,"sourceOutput":1,"destProc":6,"destInput":2}
+			]
+	  }
+	`
+
+	compareDiagrams(t, s, expected)
+}

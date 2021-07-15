@@ -151,9 +151,23 @@ func (tr *TableReaderSpec) summary() (string, []string) {
 		idx := tbl.ActiveIndexes()[int(tr.IndexIdx)]
 		valDirs := catalogkeys.IndexKeyValDirs(idx)
 
+		// keyColumnIds := idx.IndexDesc().KeyColumnIDs
+		// columns := tr.Table.Columns
+
+		// var indexColumns []ColumnDescriptor
+		// for _, col := range columns {
+		// 	for keyColId := range keyColumnIds {
+		// 		if int(col.ID) == keyColId {
+		// 			indexColumns = append(indexColumns, keyColId)
+		// 		}
+		// 	}
+		// }
+
 		var spanStr strings.Builder
 		spanStr.WriteString("Spans: ")
-		spanStr.WriteString(catalogkeys.PrettySpan(valDirs, tr.Spans[0].Span, 2))
+		spanStr.WriteString(catalogkeys.PrettySpan(valDirs, tr.Spans[0].Span, 2)) // Maybe we somehow pass context about the table here.
+		// So maybe we change the higher-level test around TableReaderSpec.summary()
+		// But definitely we write new tests around catalogkeys.PrettySpan(), showing enum decoding happening
 
 		if len(tr.Spans) > 1 {
 			spanStr.WriteString(fmt.Sprintf(" and %d other", len(tr.Spans)-1))
