@@ -18,7 +18,7 @@ import {
 } from "src/redux/apiReducers";
 import { CachedDataReducerState } from "src/redux/cachedDataReducer";
 import { AdminUIState } from "src/redux/state";
-import { StatementsResponseMessage } from "src/util/api";
+import {DatabasesResponseMessage, StatementsResponseMessage} from "src/util/api";
 import {
   aggregateStatementStats,
   combineStatementStats,
@@ -184,17 +184,13 @@ export const selectApps = createSelector(
 // selectDatabases returns the array of all databases with statement statistics present
 // in the data.
 export const selectDatabases = createSelector(
-  (state: AdminUIState) => state.cachedData.statements,
-  (state: CachedDataReducerState<StatementsResponseMessage>) => {
+  (state: AdminUIState) => state.cachedData.databases,
+  (state: CachedDataReducerState<DatabasesResponseMessage>) => {
     if (!state.data) {
       return [];
     }
     return Array.from(
-      new Set(
-        state.data.statements.map(s =>
-          s.key.key_data.database ? s.key.key_data.database : "(unset)",
-        ),
-      ),
+      new Set(state.data.databases.map(s => (s ? s : "(unset)"))),
     ).filter((dbName: string) => dbName !== null && dbName.length > 0);
   },
 );
