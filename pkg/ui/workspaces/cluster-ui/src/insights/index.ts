@@ -11,3 +11,4 @@
 export * from "./workloadInsights";
 export * from "./utils";
 export * from "./types";
+export * from "./schemainsights";

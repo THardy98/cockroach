@@ -18,6 +18,18 @@ import {
   InsightEventFilters,
 } from "./types";
 
+export type SchemaInsightFilters = {
+  insightType?: string;
+  database?: string;
+  table?: string;
+}
+
+export const defaultSchemaInsightFilters: SchemaInsightFilters = {
+  insightType: "",
+  database: "",
+  table: "",
+};
+
 export const getInsights = (eventState: InsightEventState): Insight[] => {
   const insights: Insight[] = [];
   InsightTypes.forEach(insight => {

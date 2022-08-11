@@ -16,6 +16,7 @@ import {
   SortSetting,
   InsightEventFilters,
 } from "@cockroachlabs/cluster-ui";
+import {SchemaInsightFilters} from "@cockroachlabs/cluster-ui/dist/types";
 
 export const filtersLocalSetting = new LocalSetting<
   AdminUIState,
@@ -38,4 +39,19 @@ export const selectInsights = createSelector(
     if (!adminUiState.insights) return [];
     return adminUiState.insights.data;
   },
+);
+
+export const schemaInsightsSortLocalSetting = new LocalSetting<
+  AdminUIState,
+  SortSetting
+  >("sortSetting/SchemaInsightsPage", (state: AdminUIState) => state.localSettings, {
+  ascending: false,
+  columnTitle: "insights",
+});
+
+export const schemaFiltersLocalSetting = new LocalSetting<
+  AdminUIState,
+  SchemaInsightFilters
+  >("filters/SchemaInsightsPage", (state: AdminUIState) => state.localSettings,
+  def
 );
