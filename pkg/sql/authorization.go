@@ -161,6 +161,12 @@ func (p *planner) HasPrivilege(
 		return false, nil
 	}
 
+	// This hangs.
+	_, err := p.MemberOfWithAdminOption(ctx, user)
+	if err != nil {
+		return false, err
+	}
+
 	// Test whether the object is being audited, and if so, record an
 	// audit event. We place this check here to increase the likelihood
 	// it will not be forgotten if features are added that access
