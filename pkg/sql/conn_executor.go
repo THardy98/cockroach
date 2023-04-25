@@ -3490,6 +3490,7 @@ func (ex *connExecutor) initPlanner(ctx context.Context, p *planner) {
 	p.schemaResolver.sessionDataStack = p.EvalContext().SessionDataStack
 	p.schemaResolver.descCollection = p.Descriptors()
 	p.schemaResolver.authAccessor = p
+	p.initializeReducedAuditConfig(ctx)
 }
 
 func (ex *connExecutor) resetPlanner(
