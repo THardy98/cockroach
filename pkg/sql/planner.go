@@ -271,6 +271,9 @@ type planner struct {
 
 	// trackDependency is used to track circular dependencies when dropping views.
 	trackDependency map[catid.DescID]bool
+
+	// reducedAuditConfig is the first matching audit setting for this user
+	reducedAuditConfig *auditlogging.AuditSetting
 }
 
 // hasFlowForPausablePortal returns true if the planner is for re-executing a
@@ -607,10 +610,6 @@ func (p *planner) GetOrInitSequenceCache() sessiondatapb.SequenceCache {
 
 func (p *planner) LeaseMgr() *lease.Manager {
 	return p.execCfg.LeaseManager
-}
-
-func (p *planner) AuditConfig() *auditlogging.AuditConfigLock {
-	return p.execCfg.SessionInitCache.AuditConfig
 }
 
 func (p *planner) Txn() *kv.Txn {

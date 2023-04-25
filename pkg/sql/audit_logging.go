@@ -12,10 +12,12 @@ package sql
 
 import (
 	"context"
+	"fmt"
 	"github.com/cockroachdb/cockroach/pkg/sql/auditlogging"
 	"github.com/cockroachdb/cockroach/pkg/sql/auditlogging/auditevents"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descs"
 	"github.com/cockroachdb/cockroach/pkg/sql/privilege"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 )
@@ -42,38 +44,52 @@ func (p *planner) maybeAuditSensitiveTableAccessEvent(
 	)
 }
 
-func (p *planner) maybeAuditRoleBasedAuditEvent(
-	ctx context.Context,
-) {
-	// Avoid doing audit work if not necessary.
+func (p *planner) maybeAuditRoleBasedAuditEvent() {
+	// Avoid doing audit logging work if we don't have to.
 	if p.shouldNotRoleBasedAudit() {
 		return
 	}
-
-	userRoles, err := p.MemberOfWithAdminOption(ctx, p.User())
-	if err != nil {
-		log.Errorf(ctx, "RoleBasedAuditEvent: error getting user role memberships: %v", err)
-		return
-	}
-	p.AuditConfig().Lock()
-	defer p.AuditConfig().Unlock()
-
-	// Get matching audit setting.
-	auditSetting := p.AuditConfig().Config.GetMatchingAuditSetting(userRoles)
-	// No matching setting, return early.
-	if auditSetting == nil {
+	// If the reduced config is nil, there were no matching audit settings. Return early.
+	if p.reducedAuditConfig == nil {
 		return
 	}
 
 	stmtType := p.stmt.AST.StatementType()
-	if _, exists := auditSetting.StatementTypes[stmtType]; exists {
+	if p.reducedAuditConfig.CheckMatchingStatementType(stmtType) {
+		sessionConnDetails := p.execCfg.SessionInitCache.ReadSessionConnCache(p.User())
 		p.curPlan.auditEventBuilders = append(p.curPlan.auditEventBuilders,
 			&auditevents.RoleBasedAuditEvent{
-				Role:          auditSetting.Role.Normalized(),
-				StatementType: stmtType.String(),
-				DatabaseName:  p.CurrentDatabase(),
+				Setting:        p.reducedAuditConfig,
+				StatementType:  stmtType.String(),
+				DatabaseName:   p.CurrentDatabase(),
+				ServerAddress:  sessionConnDetails.ServerAddr,
+				RemoteAddress:  sessionConnDetails.RemoteAddr,
+				ConnectionType: sessionConnDetails.ConnMethod,
 			},
 		)
+	}
+}
+
+func (p *planner) initializeReducedAuditConfig(ctx context.Context) {
+	// Avoid doing audit config setup if we don't have to.
+	if p.shouldNotRoleBasedAudit() {
+		return
+	}
+
+	err := p.execCfg.InternalDB.DescsTxn(ctx, func(ctx context.Context, txn descs.Txn) error {
+		userRoles, err := MemberOfWithAdminOption(ctx, p.execCfg, txn, p.User())
+		if err != nil {
+			return err
+		}
+		p.execCfg.SessionInitCache.AuditConfig.Lock()
+		defer p.execCfg.SessionInitCache.AuditConfig.Unlock()
+		p.reducedAuditConfig = p.execCfg.SessionInitCache.AuditConfig.Config.GetMatchingAuditSetting(userRoles)
+		return nil
+	})
+	if err != nil {
+		fmt.Println("RoleBasedAuditEvent: error getting user role memberships", err)
+		log.Errorf(ctx, "RoleBasedAuditEvent: error getting user role memberships: %v", err)
+		return
 	}
 }
 

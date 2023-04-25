@@ -12,6 +12,7 @@ package sql
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"math"
 	"regexp"
@@ -38,38 +39,45 @@ func TestRoleBasedAuditLogging(t *testing.T) {
 	cleanup := logtestutils.InstallLogFileSink(sc, t, logpb.Channel_SENSITIVE_ACCESS)
 	defer cleanup()
 
+	ctx := context.Background()
 	s, sqlDB, _ := serverutils.StartServer(t, base.TestServerArgs{})
 	db := sqlutils.MakeSQLRunner(sqlDB)
-	defer s.Stopper().Stop(context.Background())
+	defer s.Stopper().Stop(ctx)
 
 	// Dummy table/user used by tests.
 	db.Exec(t, `CREATE TABLE u(x int)`)
 	db.Exec(t, `CREATE USER test_user`)
 
 	t.Run("testSingleRoleAuditLogging", func(t *testing.T) {
-		testSingleRoleAuditLogging(t, db)
+		testSingleRoleAuditLogging(t, ctx, sqlDB)
 	})
 	// Reset audit config between tests.
 	db.Exec(t, `SET CLUSTER SETTING sql.log.user_audit = ''`)
 	t.Run("testMultiRoleAuditLogging", func(t *testing.T) {
-		testMultiRoleAuditLogging(t, db)
+		testMultiRoleAuditLogging(t, ctx, sqlDB)
 	})
 }
 
-func testSingleRoleAuditLogging(t *testing.T, db *sqlutils.SQLRunner) {
-	db.Exec(t, `SET CLUSTER SETTING sql.log.user_audit = '
-		all_stmt_types ALL
-		some_stmt_types DDL,DML
-		no_stmt_types NONE
-	'`)
+func testSingleRoleAuditLogging(t *testing.T, ctx context.Context, sqlDB *sql.DB) {
+	setupConn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupDb := sqlutils.MakeSQLRunner(setupConn)
 
 	allStmtTypesRole := "all_stmt_types"
 	someStmtTypeRole := "some_stmt_types"
 	noStmtTypeRole := "no_stmt_types"
 
-	db.Exec(t, fmt.Sprintf("CREATE ROLE IF NOT EXISTS %s", allStmtTypesRole))
-	db.Exec(t, fmt.Sprintf("CREATE ROLE IF NOT EXISTS %s", someStmtTypeRole))
-	db.Exec(t, fmt.Sprintf("CREATE ROLE IF NOT EXISTS %s", noStmtTypeRole))
+	setupDb.Exec(t, fmt.Sprintf("CREATE ROLE IF NOT EXISTS %s", allStmtTypesRole))
+	setupDb.Exec(t, fmt.Sprintf("CREATE ROLE IF NOT EXISTS %s", someStmtTypeRole))
+	setupDb.Exec(t, fmt.Sprintf("CREATE ROLE IF NOT EXISTS %s", noStmtTypeRole))
+
+	setupDb.Exec(t, `SET CLUSTER SETTING sql.log.user_audit = '
+		all_stmt_types ALL
+		some_stmt_types DDL,DML
+		no_stmt_types NONE
+	'`)
 
 	// Queries for all statement types
 	testQueries := []string{
@@ -85,40 +93,45 @@ func testSingleRoleAuditLogging(t *testing.T, db *sqlutils.SQLRunner) {
 		role            string
 		queries         []string
 		expectedNumLogs int
-		includesDCL     bool
 	}{
 		{
 			name:            "test-some-stmt-types",
 			role:            someStmtTypeRole,
 			queries:         testQueries,
 			expectedNumLogs: 2,
-			includesDCL:     false,
 		},
 		{
 			name:            "test-all-stmt-types",
 			role:            allStmtTypesRole,
 			queries:         testQueries,
 			expectedNumLogs: 3,
-			includesDCL:     true,
 		},
 		{
 			name:            "test-no-stmt-types",
 			role:            noStmtTypeRole,
 			queries:         testQueries,
 			expectedNumLogs: 0,
-			includesDCL:     false,
 		},
 	}
 
 	for _, td := range testData {
 		// Grant the audit role
-		db.Exec(t, fmt.Sprintf("GRANT %s to root", td.role))
-		// Run queries
+		// Note that this query will cause the reduced audit config to initialize.
+		setupDb.Exec(t, fmt.Sprintf("GRANT %s to root", td.role))
+		// The reduced audit config is initialized at the first attempt to add an audit event and never
+		// changed from there. As such, for changes to the cluster setting config or role membership
+		// to reflect on the reduced audit config (after its creation), we need to open a separate session/connection
+		// for the reduced audit config to be re-created in the new session (thereby having the config/role changes).
+		queryConn, err := sqlDB.Conn(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		queryDb := sqlutils.MakeSQLRunner(queryConn)
 		for idx := range td.queries {
-			db.Exec(t, td.queries[idx])
+			queryDb.Exec(t, td.queries[idx])
 		}
 		// Revoke the audit role.
-		db.Exec(t, fmt.Sprintf("REVOKE %s from root", td.role))
+		setupDb.Exec(t, fmt.Sprintf("REVOKE %s from root", td.role))
 	}
 
 	log.Flush()
@@ -152,21 +165,19 @@ func testSingleRoleAuditLogging(t *testing.T, db *sqlutils.SQLRunner) {
 		if !exists && td.expectedNumLogs != 0 {
 			t.Errorf("found no entries for role: %s", td.role)
 		}
-		expectedNumLogs := td.expectedNumLogs
-		if td.includesDCL {
-			// Add another log for roles that log DCL as the query granting the audit role gets logged.
-			// The revoke query does not get logged (as the user does not have the corresponding audit role
-			// anymore).
-			expectedNumLogs++
-		}
-		require.Equal(t, expectedNumLogs, numLogs)
+		require.Equal(t, td.expectedNumLogs, numLogs)
 	}
 }
 
 // testMultiRoleAuditLogging tests that we emit the expected audit logs when a user belongs to
 // multiple roles that correspond to audit settings. We ensure that the expected audit logs
 // correspond to *only* the *first matching audit setting* of the user's roles.
-func testMultiRoleAuditLogging(t *testing.T, db *sqlutils.SQLRunner) {
+func testMultiRoleAuditLogging(t *testing.T, ctx context.Context, sqlDB *sql.DB) {
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := sqlutils.MakeSQLRunner(conn)
 	startTimestamp := timeutil.Now().Unix()
 	roleA := "roleA"
 	roleB := "roleB"
@@ -202,6 +213,8 @@ func testMultiRoleAuditLogging(t *testing.T, db *sqlutils.SQLRunner) {
 		},
 	}
 
+	// Note that we do not need to create a separate connection here as no cluster setting config
+	// role membership changes have occurred since setting the cluster setting's initial value.
 	for _, query := range testQueries {
 		db.Exec(t, query)
 	}

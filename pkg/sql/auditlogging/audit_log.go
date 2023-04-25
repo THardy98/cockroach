@@ -28,7 +28,6 @@ import (
 type Auditor interface {
 	GetQualifiedTableNameByID(ctx context.Context, id int64, requiredType tree.RequiredTableKind) (*tree.TableName, error)
 	Txn() *kv.Txn
-	AuditConfig() *AuditConfigLock
 }
 
 // AuditEventBuilder is the interface used to build different audit events.
