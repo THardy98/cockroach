@@ -22,7 +22,13 @@ import (
 )
 
 func registerRoleBasedAuditLogging(r registry.Registry) {
+	<<<<<<< HEAD
 	const warehouses = 2500
+	====== =
+	const warehouses = 100
+	>>>>>>> bcd767b3d9a(fix
+	TPCC
+	benchmark)
 	const length = time.Minute * 20
 
 	r.Add(registry.TestSpec{
