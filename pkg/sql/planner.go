@@ -273,7 +273,7 @@ type planner struct {
 	trackDependency map[catid.DescID]bool
 
 	// reducedAuditConfig is the first matching audit setting for this user
-	reducedAuditConfig *auditlogging.AuditSetting
+	reducedAuditConfig *auditlogging.ReducedAuditConfig
 }
 
 // hasFlowForPausablePortal returns true if the planner is for re-executing a

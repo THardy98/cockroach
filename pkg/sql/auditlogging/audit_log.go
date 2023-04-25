@@ -51,6 +51,10 @@ type AuditConfigLock struct {
 	Config *AuditConfig
 }
 
+type ReducedAuditConfig struct {
+	Setting *AuditSetting
+}
+
 // AuditConfig is a parsed configuration.
 type AuditConfig struct {
 	// settings are the collection of AuditSettings that make up the AuditConfig.
