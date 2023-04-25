@@ -40,9 +40,7 @@ type AuditEventBuilder interface {
 	) logpb.EventPayload
 }
 
-// allUserRole is a special role value for an audit setting, it designates that
-// the audit setting applies to all users.
-const allUserRole = "all"
+const AllUserRole = "all"
 
 // AuditConfigLock is a mutex wrapper around AuditConfig, to provide safety
 // with concurrent usage.
@@ -57,35 +55,31 @@ type ReducedAuditConfig struct {
 
 // AuditConfig is a parsed configuration.
 type AuditConfig struct {
-	// settings are the collection of AuditSettings that make up the AuditConfig.
-	settings []AuditSetting
-	// allRoleAuditSettingIdx is an index corresponding to an AuditSetting in settings that applies to all
-	// users, if it exists. Default value -1 (defaultAllAuditSettingIdx).
-	allRoleAuditSettingIdx int
+	// Settings are the collection of AuditSettings that make up the AuditConfig.
+	Settings map[username.SQLUsername]*AuditSetting
 }
-
-const defaultAllAuditSettingIdx = -1
 
 func EmptyAuditConfig() *AuditConfig {
 	return &AuditConfig{
-		allRoleAuditSettingIdx: defaultAllAuditSettingIdx,
+		Settings: make(map[username.SQLUsername]*AuditSetting),
 	}
 }
 
-// GetMatchingAuditSetting checks if any user's roles match any roles configured in the audit config.
+// GetUnionMatchingSettings checks if any user's roles match any roles configured in the audit config.
 // Returns the first matching AuditSetting.
-func (c AuditConfig) GetMatchingAuditSetting(
+func (c AuditConfig) GetUnionMatchingSettings(
 	userRoles map[username.SQLUsername]bool,
 ) *AuditSetting {
+	var unionStmtTypes []tree.StatementType
+	for role := range userRoles {
+		setting, exists := c.Settings[role]
+		unionStmtTypes = append(unionStmtTypes, setting.StatementTypes)
+	}
 	// If the user matches any Setting, return the corresponding filter.
 	for idx, filter := range c.settings {
 		// If we have matched an audit setting by role, return the audit setting.
 		_, exists := userRoles[filter.Role]
 		if exists {
-			return &filter
-		}
-		// If we have reached an audit setting that applies to all roles, return the audit setting.
-		if idx == c.allRoleAuditSettingIdx {
 			return &filter
 		}
 	}
@@ -149,5 +143,5 @@ type AuditSetting struct {
 }
 
 func (s AuditSetting) String() string {
-	return AuditConfig{settings: []AuditSetting{s}}.String()
+	return AuditConfig{Settings: []AuditSetting{s}}.String()
 }

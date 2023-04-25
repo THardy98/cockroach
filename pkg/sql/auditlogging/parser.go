@@ -27,10 +27,9 @@ func parse(input string) (*AuditConfig, error) {
 		return nil, err
 	}
 
-	config := EmptyAuditConfig()
-	config.settings = make([]AuditSetting, len(tokens.Lines))
-	// settingsRoleMap keeps track of the roles we've already written in the config
-	settingsRoleMap := make(map[username.SQLUsername]interface{}, len(tokens.Lines))
+	config := &AuditConfig{
+		Settings: make(map[username.SQLUsername]*AuditSetting, len(tokens.Lines)),
+	}
 	for i, line := range tokens.Lines {
 		setting, err := parseAuditSetting(line)
 		if err != nil {
@@ -38,14 +37,10 @@ func parse(input string) (*AuditConfig, error) {
 				pgerror.WithCandidateCode(err, pgcode.ConfigFile),
 				"line %d", tokens.Linenos[i])
 		}
-		if _, exists := settingsRoleMap[setting.Role]; exists {
+		if _, exists := config.Settings[setting.Role]; exists {
 			return nil, errors.Newf("duplicate role listed: %v", setting.Role)
 		}
-		settingsRoleMap[setting.Role] = i
-		config.settings[i] = setting
-		if setting.Role.Normalized() == allUserRole {
-			config.allRoleAuditSettingIdx = i
-		}
+		config.Settings[setting.Role] = &setting
 	}
 	return config, nil
 }
@@ -119,13 +114,9 @@ func parseStatementTypes(stmtTypes []rulebasedscanner.String) (map[tree.Statemen
 			types[tree.TypeDCL] = idx
 			types[tree.TypeDDL] = idx + 1
 			types[tree.TypeDML] = idx + 2
-		case "NONE":
-			if len(types) > 0 {
-				return types, errors.Newf(`redundant statement types with "NONE"`)
-			}
 		default:
 			return types, errors.WithHint(errors.Newf(
-				`unknown statement type: %q (valid types include: "DDL", "DML", "DCL", "ALL", "NONE")`, stmtType.Value,
+				`unknown statement type: %q (valid types include: "DDL", "DML", "DCL", "ALL")`, stmtType.Value,
 			), "Statement types are normalized (i.e. Ddl, ddl are valid inputs for DDL)")
 		}
 	}
