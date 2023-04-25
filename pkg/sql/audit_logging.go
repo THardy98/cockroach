@@ -78,7 +78,7 @@ func (p *planner) initializeReducedAuditConfig(ctx context.Context) {
 	p.execCfg.SessionInitCache.AuditConfig.Lock()
 	defer p.execCfg.SessionInitCache.AuditConfig.Unlock()
 	p.reducedAuditConfig = &auditlogging.ReducedAuditConfig{}
-	p.reducedAuditConfig.Setting = p.execCfg.SessionInitCache.AuditConfig.Config.GetMatchingAuditSetting(userRoles)
+	p.reducedAuditConfig.Setting = p.execCfg.SessionInitCache.AuditConfig.Config.GetUnionMatchingSettings(userRoles)
 }
 
 // shouldNotRoleBasedAudit checks if we should do any auditing work for RoleBasedAuditEvents.
