@@ -47,21 +47,21 @@ func (p *planner) maybeAuditRoleBasedAuditEvent(ctx context.Context) {
 	if p.shouldNotRoleBasedAudit() {
 		return
 	}
-	// If the reduced config is nil, initialize.
-	if p.reducedAuditConfig == nil {
-		p.initializeReducedAuditConfig(ctx)
+	// If the union config is nil, initialize.
+	if p.unionAuditConfig == nil {
+		p.initializeUnionAuditConfig(ctx)
 	}
 
-	// If the reduced config setting is nil, there were no matching audit settings. Return early.
-	if p.reducedAuditConfig.Setting == nil {
+	// If there are no matching roles, return early.
+	if len(p.unionAuditConfig.Roles) == 0 {
 		return
 	}
 
 	stmtType := p.stmt.AST.StatementType()
-	if _, exists := p.reducedAuditConfig.Setting.StatementTypes[stmtType]; exists {
+	if _, exists := p.unionAuditConfig.StmtTypes[stmtType]; exists {
 		p.curPlan.auditEventBuilders = append(p.curPlan.auditEventBuilders,
 			&auditevents.RoleBasedAuditEvent{
-				Role:          p.reducedAuditConfig.Setting.Role.Normalized(),
+				Roles:         p.unionAuditConfig.Roles,
 				StatementType: stmtType.String(),
 				DatabaseName:  p.CurrentDatabase(),
 			},
@@ -69,7 +69,7 @@ func (p *planner) maybeAuditRoleBasedAuditEvent(ctx context.Context) {
 	}
 }
 
-func (p *planner) initializeReducedAuditConfig(ctx context.Context) {
+func (p *planner) initializeUnionAuditConfig(ctx context.Context) {
 	userRoles, err := p.MemberOfWithAdminOption(ctx, p.User())
 	if err != nil {
 		log.Errorf(ctx, "RoleBasedAuditEvent: error getting user role memberships: %v", err)
@@ -77,8 +77,7 @@ func (p *planner) initializeReducedAuditConfig(ctx context.Context) {
 	}
 	p.execCfg.SessionInitCache.AuditConfig.Lock()
 	defer p.execCfg.SessionInitCache.AuditConfig.Unlock()
-	p.reducedAuditConfig = &auditlogging.ReducedAuditConfig{}
-	p.reducedAuditConfig.Setting = p.execCfg.SessionInitCache.AuditConfig.Config.GetUnionMatchingSettings(userRoles)
+	p.unionAuditConfig = p.execCfg.SessionInitCache.AuditConfig.Config.GetUnionMatchingSettings(userRoles)
 }
 
 // shouldNotRoleBasedAudit checks if we should do any auditing work for RoleBasedAuditEvents.

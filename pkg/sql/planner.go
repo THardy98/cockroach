@@ -272,8 +272,8 @@ type planner struct {
 	// trackDependency is used to track circular dependencies when dropping views.
 	trackDependency map[catid.DescID]bool
 
-	// reducedAuditConfig is the first matching audit setting for this user
-	reducedAuditConfig *auditlogging.ReducedAuditConfig
+	// unionAuditConfig is the first matching audit setting for this user
+	unionAuditConfig *auditlogging.UnionAuditConfig
 }
 
 // hasFlowForPausablePortal returns true if the planner is for re-executing a

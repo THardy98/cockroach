@@ -67,16 +67,13 @@ func testSingleRoleAuditLogging(t *testing.T, ctx context.Context, sqlDB *sql.DB
 
 	allStmtTypesRole := "all_stmt_types"
 	someStmtTypeRole := "some_stmt_types"
-	noStmtTypeRole := "no_stmt_types"
 
 	setupDb.Exec(t, fmt.Sprintf("CREATE ROLE IF NOT EXISTS %s", allStmtTypesRole))
 	setupDb.Exec(t, fmt.Sprintf("CREATE ROLE IF NOT EXISTS %s", someStmtTypeRole))
-	setupDb.Exec(t, fmt.Sprintf("CREATE ROLE IF NOT EXISTS %s", noStmtTypeRole))
 
 	setupDb.Exec(t, `SET CLUSTER SETTING sql.log.user_audit = '
 		all_stmt_types ALL
 		some_stmt_types DDL,DML
-		no_stmt_types NONE
 	'`)
 
 	// Queries for all statement types
@@ -105,12 +102,6 @@ func testSingleRoleAuditLogging(t *testing.T, ctx context.Context, sqlDB *sql.DB
 			role:            allStmtTypesRole,
 			queries:         testQueries,
 			expectedNumLogs: 3,
-		},
-		{
-			name:            "test-no-stmt-types",
-			role:            noStmtTypeRole,
-			queries:         testQueries,
-			expectedNumLogs: 0,
 		},
 	}
 
