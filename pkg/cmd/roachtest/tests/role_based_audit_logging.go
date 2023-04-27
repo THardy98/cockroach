@@ -108,6 +108,12 @@ func setRoleBasedAuditConfig(ctx context.Context, t test.Test, c cluster.Cluster
 	if _, err := db.Exec(fmt.Sprintf("SET CLUSTER SETTING sql.log.user_audit = '%s'", configString)); err != nil {
 		return err
 	}
+	var currentVal string
+	err := db.QueryRow("SHOW CLUSTER SETTING sql.log.user_audit").Scan(&currentVal)
+	if err != nil {
+		return err
+	}
 	t.L().Printf("Set cluster setting for audit config, %d audit settings\n", numSettings)
+	t.L().Printf("SHOW CLUSTER SETTING sql.log.user_audit:\n%s\n", currentVal)
 	return db.Close()
 }
