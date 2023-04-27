@@ -40,17 +40,16 @@ type AuditEventBuilder interface {
 	) logpb.EventPayload
 }
 
-const AllUserRole = "all"
-
-// AuditConfigLock is a mutex wrapper around AuditConfig, to provide safety
-// with concurrent usage.
 type AuditConfigLock struct {
 	syncutil.RWMutex
 	Config *AuditConfig
 }
 
-type ReducedAuditConfig struct {
-	Setting *AuditSetting
+type UnionAuditConfig struct {
+	// This is created once at config initialization and never changed.
+	Roles []string
+	// StmtTypes is a map for easy lookup.
+	StmtTypes map[tree.StatementType]interface{}
 }
 
 // AuditConfig is a parsed configuration.
@@ -69,32 +68,58 @@ func EmptyAuditConfig() *AuditConfig {
 // Returns the first matching AuditSetting.
 func (c AuditConfig) GetUnionMatchingSettings(
 	userRoles map[username.SQLUsername]bool,
-) *AuditSetting {
-	var unionStmtTypes []tree.StatementType
+) *UnionAuditConfig {
+	uc := &UnionAuditConfig{StmtTypes: make(map[tree.StatementType]interface{})}
+
+	if len(userRoles) < len(c.Settings) {
+		uc.iterateUserRoles(c.Settings, userRoles)
+	} else {
+		uc.iterateAuditSettings(c.Settings, userRoles)
+	}
+	return uc
+}
+
+func (uc *UnionAuditConfig) iterateUserRoles(
+	settings map[username.SQLUsername]*AuditSetting,
+	userRoles map[username.SQLUsername]bool,
+) {
 	for role := range userRoles {
-		setting, exists := c.Settings[role]
-		unionStmtTypes = append(unionStmtTypes, setting.StatementTypes)
-	}
-	// If the user matches any Setting, return the corresponding filter.
-	for idx, filter := range c.settings {
-		// If we have matched an audit setting by role, return the audit setting.
-		_, exists := userRoles[filter.Role]
-		if exists {
-			return &filter
+		setting, exists := settings[role]
+		if !exists {
+			continue
 		}
+		uc.updateSetting(setting)
 	}
-	// No filter found.
-	return nil
+}
+
+func (uc *UnionAuditConfig) iterateAuditSettings(
+	settings map[username.SQLUsername]*AuditSetting,
+	userRoles map[username.SQLUsername]bool,
+) {
+	for role, setting := range settings {
+		_, exists := userRoles[role]
+		if !exists {
+			continue
+		}
+		uc.updateSetting(setting)
+	}
+}
+
+func (uc *UnionAuditConfig) updateSetting(s *AuditSetting) {
+	uc.Roles = append(uc.Roles, s.Role.Normalized())
+	for stmtType := range s.StatementTypes {
+		uc.StmtTypes[stmtType] = nil
+	}
 }
 
 func (c AuditConfig) String() string {
-	if len(c.settings) == 0 {
+	if len(c.Settings) == 0 {
 		return "# (empty configuration)\n"
 	}
 
 	var sb strings.Builder
 	sb.WriteString("# Original configuration:\n")
-	for _, setting := range c.settings {
+	for _, setting := range c.Settings {
 		fmt.Fprintf(&sb, "# %s\n", setting.input)
 	}
 	sb.WriteString("#\n# Interpreted configuration:\n")
@@ -110,7 +135,7 @@ func (c AuditConfig) String() string {
 
 	row := []string{"# ROLE", "STATEMENT_TYPE"}
 	table.Append(row)
-	for _, setting := range c.settings {
+	for _, setting := range c.Settings {
 		row[0] = setting.Role.Normalized()
 		row[1] = strings.Join(writeStatementTypes(setting.StatementTypes), ",")
 		table.Append(row)
@@ -143,5 +168,7 @@ type AuditSetting struct {
 }
 
 func (s AuditSetting) String() string {
-	return AuditConfig{Settings: []AuditSetting{s}}.String()
+	return AuditConfig{Settings: map[username.SQLUsername]*AuditSetting{
+		s.Role: &s,
+	}}.String()
 }
