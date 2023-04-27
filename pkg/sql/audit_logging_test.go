@@ -109,7 +109,7 @@ func testSingleRoleAuditLogging(t *testing.T, ctx context.Context, sqlDB *sql.DB
 		// Grant the audit role
 		// Note that this query will cause the reduced audit config to initialize.
 		setupDb.Exec(t, fmt.Sprintf("GRANT %s to root", td.role))
-		// The reduced audit config is initialized at the first attempt to add an audit event and never
+		// The union audit config is initialized at the first attempt to add an audit event and never
 		// changed from there. As such, for changes to the cluster setting config or role membership
 		// to reflect on the reduced audit config (after its creation), we need to open a separate session/connection
 		// for the reduced audit config to be re-created in the new session (thereby having the config/role changes).
@@ -192,16 +192,14 @@ func testMultiRoleAuditLogging(t *testing.T, ctx context.Context, sqlDB *sql.DB)
 		`SELECT * FROM u`,
 	}
 	testData := struct {
-		name               string
-		expectedRoleToLogs map[string]int
+		name            string
+		expectedRoles   []string
+		expectedNumLogs int
 	}{
-		name: "test-multi-role-user",
-		expectedRoleToLogs: map[string]int{
-			// Expect single log from DML query.
-			roleA: 1,
-			// Expect no logs from DDL/DCL queries as we match on roleA first.
-			roleB: 0,
-		},
+		name:          "test-multi-role-user",
+		expectedRoles: []string{roleA, roleB},
+		// Expect an audit log for each test query.
+		expectedNumLogs: 3,
 	}
 
 	// Note that we do not need to create a separate connection here as no cluster setting config
@@ -228,14 +226,16 @@ func testMultiRoleAuditLogging(t *testing.T, ctx context.Context, sqlDB *sql.DB)
 		t.Fatal(errors.Newf("no entries found"))
 	}
 
-	roleToLogs := make(map[string]int)
-	for role, expectedNumLogs := range testData.expectedRoleToLogs {
-		for _, entry := range entries {
+	// Add one here to account for the SET CLUSTER SETTING query.
+	require.Equal(t, testData.expectedNumLogs+1, len(entries), "unexpected number of logs")
+	for _, entry := range entries {
+		rolesCounter := 0
+		for _, role := range testData.expectedRoles {
 			// Lowercase the role string as we normalize it for logs.
 			if strings.Contains(entry.Message, strings.ToLower(role)) {
-				roleToLogs[role]++
+				rolesCounter++
 			}
 		}
-		require.Equal(t, expectedNumLogs, roleToLogs[role], "unexpected number of logs for role: '%s'", role)
+		require.Equal(t, len(testData.expectedRoles), rolesCounter, "unexpected number of roles")
 	}
 }
