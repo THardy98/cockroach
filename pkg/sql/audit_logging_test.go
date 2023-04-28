@@ -90,18 +90,21 @@ func testSingleRoleAuditLogging(t *testing.T, ctx context.Context, sqlDB *sql.DB
 		role            string
 		queries         []string
 		expectedNumLogs int
+		includesDCL     bool
 	}{
 		{
 			name:            "test-some-stmt-types",
 			role:            someStmtTypeRole,
 			queries:         testQueries,
 			expectedNumLogs: 2,
+			includesDCL:     false,
 		},
 		{
 			name:            "test-all-stmt-types",
 			role:            allStmtTypesRole,
 			queries:         testQueries,
 			expectedNumLogs: 3,
+			includesDCL:     true,
 		},
 	}
 
@@ -156,7 +159,14 @@ func testSingleRoleAuditLogging(t *testing.T, ctx context.Context, sqlDB *sql.DB
 		if !exists && td.expectedNumLogs != 0 {
 			t.Errorf("found no entries for role: %s", td.role)
 		}
-		require.Equal(t, td.expectedNumLogs, numLogs)
+		expectedNumLogs := td.expectedNumLogs
+		if td.includesDCL {
+			// Add another log for roles that log DCL as the query granting the audit role gets logged.
+			// The revoke query does not get logged (as the user does not have the corresponding audit role
+			// anymore).
+			expectedNumLogs++
+		}
+		require.Equal(t, expectedNumLogs, numLogs)
 	}
 }
 
