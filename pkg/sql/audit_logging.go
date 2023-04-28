@@ -47,37 +47,31 @@ func (p *planner) maybeAuditRoleBasedAuditEvent(ctx context.Context) {
 	if p.shouldNotRoleBasedAudit() {
 		return
 	}
-	// If the union config is nil, initialize.
-	if p.unionAuditConfig == nil {
-		p.initializeUnionAuditConfig(ctx)
-	}
-
-	// If there are no matching roles, return early.
-	if len(p.unionAuditConfig.Roles) == 0 {
-		return
-	}
-
-	stmtType := p.stmt.AST.StatementType()
-	if _, exists := p.unionAuditConfig.StmtTypes[stmtType]; exists {
-		p.curPlan.auditEventBuilders = append(p.curPlan.auditEventBuilders,
-			&auditevents.RoleBasedAuditEvent{
-				Roles:         p.unionAuditConfig.Roles,
-				StatementType: stmtType.String(),
-				DatabaseName:  p.CurrentDatabase(),
-			},
-		)
-	}
-}
-
-func (p *planner) initializeUnionAuditConfig(ctx context.Context) {
 	userRoles, err := p.MemberOfWithAdminOption(ctx, p.User())
 	if err != nil {
 		log.Errorf(ctx, "RoleBasedAuditEvent: error getting user role memberships: %v", err)
 		return
 	}
-	p.execCfg.SessionInitCache.AuditConfig.Lock()
-	defer p.execCfg.SessionInitCache.AuditConfig.Unlock()
-	p.unionAuditConfig = p.execCfg.SessionInitCache.AuditConfig.Config.GetUnionMatchingSettings(userRoles)
+	p.AuditConfig().Lock()
+	defer p.AuditConfig().Unlock()
+
+	// Get matching audit setting.
+	unionAuditSetting := p.AuditConfig().Config.GetUnionMatchingSettings(userRoles)
+	// No matching setting, return early.
+	if unionAuditSetting == nil {
+		return
+	}
+
+	stmtType := p.stmt.AST.StatementType()
+	if _, exists := unionAuditSetting.StmtTypes[stmtType]; exists {
+		p.curPlan.auditEventBuilders = append(p.curPlan.auditEventBuilders,
+			&auditevents.RoleBasedAuditEvent{
+				Roles:         unionAuditSetting.Roles,
+				StatementType: stmtType.String(),
+				DatabaseName:  p.CurrentDatabase(),
+			},
+		)
+	}
 }
 
 // shouldNotRoleBasedAudit checks if we should do any auditing work for RoleBasedAuditEvents.
