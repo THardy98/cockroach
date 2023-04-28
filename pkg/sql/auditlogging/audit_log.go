@@ -54,13 +54,13 @@ type UnionAuditConfig struct {
 
 // AuditConfig is a parsed configuration.
 type AuditConfig struct {
-	// Settings are the collection of AuditSettings that make up the AuditConfig.
-	Settings map[username.SQLUsername]*AuditSetting
+	// settings are the collection of AuditSettings that make up the AuditConfig.
+	settings map[username.SQLUsername]*AuditSetting
 }
 
 func EmptyAuditConfig() *AuditConfig {
 	return &AuditConfig{
-		Settings: make(map[username.SQLUsername]*AuditSetting),
+		settings: make(map[username.SQLUsername]*AuditSetting),
 	}
 }
 
@@ -71,10 +71,10 @@ func (c AuditConfig) GetUnionMatchingSettings(
 ) *UnionAuditConfig {
 	uc := &UnionAuditConfig{StmtTypes: make(map[tree.StatementType]interface{})}
 
-	if len(userRoles) < len(c.Settings) {
-		uc.iterateUserRoles(c.Settings, userRoles)
+	if len(userRoles) < len(c.settings) {
+		uc.iterateUserRoles(c.settings, userRoles)
 	} else {
-		uc.iterateAuditSettings(c.Settings, userRoles)
+		uc.iterateAuditSettings(c.settings, userRoles)
 	}
 	return uc
 }
@@ -113,13 +113,13 @@ func (uc *UnionAuditConfig) updateSetting(s *AuditSetting) {
 }
 
 func (c AuditConfig) String() string {
-	if len(c.Settings) == 0 {
+	if len(c.settings) == 0 {
 		return "# (empty configuration)\n"
 	}
 
 	var sb strings.Builder
 	sb.WriteString("# Original configuration:\n")
-	for _, setting := range c.Settings {
+	for _, setting := range c.settings {
 		fmt.Fprintf(&sb, "# %s\n", setting.input)
 	}
 	sb.WriteString("#\n# Interpreted configuration:\n")
@@ -135,7 +135,7 @@ func (c AuditConfig) String() string {
 
 	row := []string{"# ROLE", "STATEMENT_TYPE"}
 	table.Append(row)
-	for _, setting := range c.Settings {
+	for _, setting := range c.settings {
 		row[0] = setting.Role.Normalized()
 		row[1] = strings.Join(writeStatementTypes(setting.StatementTypes), ",")
 		table.Append(row)
@@ -168,7 +168,7 @@ type AuditSetting struct {
 }
 
 func (s AuditSetting) String() string {
-	return AuditConfig{Settings: map[username.SQLUsername]*AuditSetting{
+	return AuditConfig{settings: map[username.SQLUsername]*AuditSetting{
 		s.Role: &s,
 	}}.String()
 }

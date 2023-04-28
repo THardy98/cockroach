@@ -164,12 +164,12 @@ func testSingleRoleAuditLogging(t *testing.T, ctx context.Context, sqlDB *sql.DB
 // multiple roles that correspond to audit settings. We ensure that the expected audit logs
 // correspond to *only* the *first matching audit setting* of the user's roles.
 func testMultiRoleAuditLogging(t *testing.T, ctx context.Context, sqlDB *sql.DB) {
+	startTimestamp := timeutil.Now().Unix()
 	conn, err := sqlDB.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	db := sqlutils.MakeSQLRunner(conn)
-	startTimestamp := timeutil.Now().Unix()
 	roleA := "roleA"
 	roleB := "roleB"
 

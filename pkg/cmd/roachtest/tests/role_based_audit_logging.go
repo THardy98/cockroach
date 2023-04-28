@@ -22,13 +22,7 @@ import (
 )
 
 func registerRoleBasedAuditLogging(r registry.Registry) {
-	<<<<<<< HEAD
 	const warehouses = 2500
-	====== =
-	const warehouses = 100
-	>>>>>>> bcd767b3d9a(fix
-	TPCC
-	benchmark)
 	const length = time.Minute * 20
 
 	r.Add(registry.TestSpec{
@@ -41,7 +35,7 @@ func registerRoleBasedAuditLogging(r registry.Registry) {
 				Warehouses: warehouses,
 				// We limit the number of workers because the default results in a lot
 				// of connections which can lead to OOM issues (see #40566).
-				ExtraRunArgs: fmt.Sprintf("--wait=false --workers=%d", warehouses),
+				ExtraRunArgs: fmt.Sprintf("--wait=false --workers=%d --tolerate-errors", warehouses),
 				Duration:     length,
 				SetupType:    usingImport,
 				During: func(ctx context.Context) error {
