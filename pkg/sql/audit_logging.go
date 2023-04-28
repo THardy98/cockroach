@@ -58,10 +58,10 @@ func (p *planner) maybeAuditRoleBasedAuditEvent(ctx context.Context) {
 	}
 
 	stmtType := p.stmt.AST.StatementType()
-	if p.reducedAuditConfig.Setting.CheckMatchingStatementType(stmtType) {
+	if _, exists := p.reducedAuditConfig.Setting.StatementTypes[stmtType]; exists {
 		p.curPlan.auditEventBuilders = append(p.curPlan.auditEventBuilders,
 			&auditevents.RoleBasedAuditEvent{
-				Setting:       p.reducedAuditConfig.Setting,
+				Role:          p.reducedAuditConfig.Setting.Role.Normalized(),
 				StatementType: stmtType.String(),
 				DatabaseName:  p.CurrentDatabase(),
 			},
@@ -79,21 +79,6 @@ func (p *planner) initializeReducedAuditConfig(ctx context.Context) {
 	defer p.execCfg.SessionInitCache.AuditConfig.Unlock()
 	p.reducedAuditConfig = &auditlogging.ReducedAuditConfig{}
 	p.reducedAuditConfig.Setting = p.execCfg.SessionInitCache.AuditConfig.Config.GetMatchingAuditSetting(userRoles)
-
-	//err := p.execCfg.InternalDB.DescsTxn(ctx, func(ctx context.Context, txn descs.Txn) error {
-	//	userRoles, err := MemberOfWithAdminOption(ctx, p.execCfg, txn, p.User())
-	//	if err != nil {
-	//		return err
-	//	}
-	//	p.execCfg.SessionInitCache.AuditConfig.Lock()
-	//	defer p.execCfg.SessionInitCache.AuditConfig.Unlock()
-	//	p.reducedAuditConfig = p.execCfg.SessionInitCache.AuditConfig.Config.GetMatchingAuditSetting(userRoles)
-	//	return nil
-	//})
-	//if err != nil {
-	//	log.Errorf(ctx, "RoleBasedAuditEvent: error getting user role memberships: %v", err)
-	//	return
-	//}
 }
 
 // shouldNotRoleBasedAudit checks if we should do any auditing work for RoleBasedAuditEvents.
