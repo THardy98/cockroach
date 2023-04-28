@@ -448,7 +448,7 @@ cluster setting.
 
 | Field | Description | Sensitive |
 |--|--|--|
-| `Role` | The configured audit role that emitted this log. | yes |
+| `Roles` | The audit roles the user belongs to. | yes |
 | `StatementType` | The statement type of the query. | yes |
 | `DatabaseName` | The active database at the time of this log. | yes |
 

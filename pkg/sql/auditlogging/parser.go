@@ -28,7 +28,7 @@ func parse(input string) (*AuditConfig, error) {
 	}
 
 	config := &AuditConfig{
-		Settings: make(map[username.SQLUsername]*AuditSetting, len(tokens.Lines)),
+		settings: make(map[username.SQLUsername]*AuditSetting, len(tokens.Lines)),
 	}
 	for i, line := range tokens.Lines {
 		setting, err := parseAuditSetting(line)
@@ -37,10 +37,10 @@ func parse(input string) (*AuditConfig, error) {
 				pgerror.WithCandidateCode(err, pgcode.ConfigFile),
 				"line %d", tokens.Linenos[i])
 		}
-		if _, exists := config.Settings[setting.Role]; exists {
+		if _, exists := config.settings[setting.Role]; exists {
 			return nil, errors.Newf("duplicate role listed: %v", setting.Role)
 		}
-		config.Settings[setting.Role] = &setting
+		config.settings[setting.Role] = &setting
 	}
 	return config, nil
 }

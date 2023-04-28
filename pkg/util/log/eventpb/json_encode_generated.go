@@ -3957,16 +3957,23 @@ func (m *RoleBasedAuditEvent) AppendJSONFields(printComma bool, b redact.Redacta
 
 	printComma, b = m.CommonSQLExecDetails.AppendJSONFields(printComma, b)
 
-	if m.Role != "" {
+	if len(m.Roles) > 0 {
 		if printComma {
 			b = append(b, ',')
 		}
 		printComma = true
-		b = append(b, "\"Role\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.Role)))))
-		b = append(b, redact.EndMarker()...)
-		b = append(b, '"')
+		b = append(b, "\"Roles\":["...)
+		for i, v := range m.Roles {
+			if i > 0 {
+				b = append(b, ',')
+			}
+			b = append(b, '"')
+			b = append(b, redact.StartMarker()...)
+			b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(v)))))
+			b = append(b, redact.EndMarker()...)
+			b = append(b, '"')
+		}
+		b = append(b, ']')
 	}
 
 	if m.StatementType != "" {
