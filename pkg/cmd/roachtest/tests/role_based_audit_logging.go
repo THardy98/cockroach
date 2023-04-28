@@ -35,7 +35,7 @@ func registerRoleBasedAuditLogging(r registry.Registry) {
 				Warehouses: warehouses,
 				// We limit the number of workers because the default results in a lot
 				// of connections which can lead to OOM issues (see #40566).
-				ExtraRunArgs: fmt.Sprintf("--wait=false --workers=%d --tolerate-errors", warehouses),
+				ExtraRunArgs: fmt.Sprintf("--wait=false --workers=%d", warehouses),
 				Duration:     length,
 				SetupType:    usingImport,
 				During: func(ctx context.Context) error {
