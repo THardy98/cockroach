@@ -13,6 +13,7 @@ import {
   executeInternalSql,
   formatApiResult,
   isMaxSizeError,
+  safeFormatApiResult,
   SqlApiQueryResponse,
   SqlApiResponse,
   SqlExecutionErrorMessage,
@@ -513,12 +514,12 @@ async function fetchDatabaseDetails(
     }
   });
   if (resp.error) {
-    if (resp.error.message.includes("max result size exceeded")) {
+    if (isMaxSizeError(resp.error.message)) {
       return fetchSeparatelyDatabaseDetails(databaseName);
     }
     detailsResponse.error = resp.error;
   }
-  return formatApiResult<DatabaseDetailsResponse>(
+  return safeFormatApiResult<DatabaseDetailsResponse>(
     detailsResponse,
     detailsResponse.error,
     "retrieving database details information",

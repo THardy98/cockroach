@@ -209,6 +209,27 @@ export function formatApiResult<ResultType>(
   };
 }
 
+export function safeFormatApiResult<ResultType>(
+  results: ResultType,
+  error: SqlExecutionErrorMessage,
+  errorMessageContext: string,
+): SqlApiResponse<ResultType> {
+  const maxSizeError = isMaxSizeError(error?.message);
+
+  if (error && !maxSizeError) {
+    console.error(
+      `Error while ${errorMessageContext}: ${sqlApiErrorMessage(
+        error?.message,
+      )}`,
+    );
+  }
+
+  return {
+    maxSizeReached: maxSizeError,
+    results: results,
+  };
+}
+
 export function txnResultIsEmpty(txn_result: SqlTxnResult<unknown>): boolean {
   return !txn_result.rows || txn_result.rows?.length === 0;
 }
