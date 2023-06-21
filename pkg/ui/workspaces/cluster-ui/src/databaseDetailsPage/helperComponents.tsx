@@ -20,7 +20,6 @@ import { Link } from "react-router-dom";
 import { DatabaseIcon } from "../icon/databaseIcon";
 import {
   DatabaseDetailsPageDataTable,
-  DatabaseDetailsPageDataTableDetails,
   DatabaseDetailsPageProps,
   ViewMode,
 } from "./databaseDetailsPage";
@@ -33,6 +32,13 @@ import * as format from "../util/format";
 import { Breadcrumbs } from "../breadcrumbs";
 import { CaretRight } from "../icon/caretRight";
 import { CockroachCloudContext } from "../contexts";
+import {
+  isMaxSizeError,
+  isPrivilegeError,
+  SqlExecutionErrorMessage,
+  TableSchemaDetailsRow,
+  TableSpanStatsRow,
+} from "../api";
 
 const cx = classNames.bind(styles);
 
@@ -58,18 +64,34 @@ export const TableNameCell = ({
       linkURL += `?tab=grants`;
     }
   }
+
+  let icon = <DatabaseIcon className={cx("icon--s", "icon--primary")} />;
+  if (table.requestError || table.queryError) {
+    icon = (
+      <Tooltip
+        placement="bottom"
+        title={getTooltipErrorMessage(
+          table.requestError,
+          table.queryError,
+          table.name,
+        )}
+      >
+        <Caution className={cx("icon--s", "icon--warning")} />
+      </Tooltip>
+    );
+  }
   return (
     <Link to={linkURL} className={cx("icon__container")}>
-      <DatabaseIcon className={cx("icon--s", "icon--primary")} />
+      {icon}
       {table.name}
     </Link>
   );
 };
 
 export const IndexRecWithIconCell = ({
-  table,
+  details,
 }: {
-  table: DatabaseDetailsPageDataTable;
+  details: TableSchemaDetailsRow;
 }): JSX.Element => {
   return (
     <div className={cx("icon__container")}>
@@ -79,7 +101,7 @@ export const IndexRecWithIconCell = ({
       >
         <Caution className={cx("icon--s", "icon--warning")} />
       </Tooltip>
-      {table.details.indexCount}
+      {details.indexes.length}
     </div>
   );
 };
@@ -87,17 +109,17 @@ export const IndexRecWithIconCell = ({
 export const MVCCInfoCell = ({
   details,
 }: {
-  details: DatabaseDetailsPageDataTableDetails;
+  details: TableSpanStatsRow;
 }): JSX.Element => {
   return (
     <>
       <p className={cx("multiple-lines-info")}>
-        {format.Percentage(details.livePercentage, 1, 1)}
+        {format.Percentage(details.live_percentage, 1, 1)}
       </p>
       <p className={cx("multiple-lines-info")}>
-        <span className={cx("bold")}>{format.Bytes(details.liveBytes)}</span>{" "}
+        <span className={cx("bold")}>{format.Bytes(details.live_bytes)}</span>{" "}
         live data /{" "}
-        <span className={cx("bold")}>{format.Bytes(details.totalBytes)}</span>
+        <span className={cx("bold")}>{format.Bytes(details.total_bytes)}</span>
         {" total"}
       </p>
     </>
@@ -120,4 +142,23 @@ export const DbDetailsBreadcrumbs = ({ dbName }: { dbName: string }) => {
       divider={<CaretRight className={cx("icon--xxs", "icon--primary")} />}
     />
   );
+};
+
+const getTooltipErrorMessage = (
+  requestError: Error,
+  queryError: SqlExecutionErrorMessage,
+  tableName: string,
+): string => {
+  if (requestError) {
+    return `Encountered an error fetching table statistics. Table statistics are unavailable for table ${tableName}`;
+  }
+  if (queryError) {
+    if (isPrivilegeError(queryError.code)) {
+      return `Not all table statistics available, user has insufficient privileges for some statistics`;
+    }
+    if (isMaxSizeError(queryError.message)) {
+      return `Not all table statistics available, maximum size of table statistics was reached in the console`;
+    }
+    return `Unexpected query error, not all table statistics available`;
+  }
 };

@@ -11,6 +11,7 @@ sql admin
   "database": "system",
   "execute": false,
   "max_result_size": 10000,
+  "separate_txns": false,
   "statements": [
    {
     "arguments": [
@@ -545,4 +546,39 @@ sql admin
   ]
  },
  "num_statements": 1
+}
+
+// Test that running queries in separate transactions works as expected.
+sql non-admin expect-error
+{
+  "database": "mydb",
+  "execute": true,
+  "statements": [
+        {"sql": "CREATE database testdb"},
+        {"sql": "CREATE table testdb.test (id int)"},
+        {"sql": "INSERT INTO testdb.test VALUES (1)"}
+  ]
+  "separate_txns": true,
+}
+----
+{
+ "num_statements": 3,
+ "execution": {
+  "txn_results": [
+   {
+    "columns": [
+     {
+      "name": "rows_affected",
+      "oid": 20,
+      "type": "INT8"
+     }
+    ],
+    "end": "1970-01-01T00:00:00Z",
+    "rows_affected": 0,
+    "start": "1970-01-01T00:00:00Z",
+    "statement": 1,
+    "tag": "DROP TABLE"
+   }
+  ]
+ },
 }

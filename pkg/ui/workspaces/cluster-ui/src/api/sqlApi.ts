@@ -17,6 +17,7 @@ export type SqlExecutionRequest = {
   application_name?: string; // Defaults to '$ api-v2-sql'
   database?: string; // Defaults to system
   max_result_size?: number; // Default 10kib
+  separate_txns?: boolean;
 };
 
 export type SqlStatement = {
@@ -186,6 +187,10 @@ export function createSqlExecutionRequest(
 
 export function isMaxSizeError(message: string): boolean {
   return !!message?.includes("max result size exceeded");
+}
+
+export function isPrivilegeError(code: string): boolean {
+  return code === "42501";
 }
 
 export function formatApiResult<ResultType>(

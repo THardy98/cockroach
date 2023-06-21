@@ -58,6 +58,15 @@ import {
   LastUsed,
   NameCell,
 } from "./helperComponents";
+import {
+  SqlApiQueryResponse,
+  SqlExecutionErrorMessage,
+  TableCreateStatementRow,
+  TableReplicaData,
+  TableSchemaDetailsRow,
+  TableSpanStatsRow,
+} from "../api";
+import { checkInfoAvailable } from "../databases";
 
 const cx = classNames.bind(styles);
 const booleanSettingCx = classnames.bind(booleanSettingStyles);
@@ -121,17 +130,16 @@ export interface DatabaseTablePageData {
 export interface DatabaseTablePageDataDetails {
   loading: boolean;
   loaded: boolean;
-  lastError: Error;
-  createStatement: string;
-  replicaCount: number;
-  indexNames: string[];
+  // Request error getting table details
+  requestError: Error;
+  // Query error getting table details
+  queryError: SqlExecutionErrorMessage;
+  createStatement: SqlApiQueryResponse<TableCreateStatementRow>;
+  replicaData: SqlApiQueryResponse<TableReplicaData>;
+  spanStats: SqlApiQueryResponse<TableSpanStatsRow>;
+  indexData: SqlApiQueryResponse<TableSchemaDetailsRow>;
   grants: Grant[];
   statsLastUpdated?: Moment;
-  totalBytes: number;
-  liveBytes: number;
-  livePercentage: number;
-  sizeInBytes: number;
-  rangeCount: number;
   nodesByRegionString?: string;
 }
 
@@ -258,15 +266,10 @@ export class DatabaseTablePage extends React.Component<
   }
 
   private refresh() {
-    this.props.refreshUserSQLRoles();
-    if (this.props.refreshNodes != null) {
-      this.props.refreshNodes();
-    }
-
     if (
       !this.props.details.loaded &&
       !this.props.details.loading &&
-      this.props.details.lastError === undefined
+      this.props.details.requestError === undefined
     ) {
       return this.props.refreshTableDetails(
         this.props.databaseName,
@@ -439,12 +442,23 @@ export class DatabaseTablePage extends React.Component<
               <Loading
                 loading={this.props.details.loading}
                 page={"table_details"}
-                error={this.props.details.lastError}
+                error={this.props.details.requestError}
                 render={() => (
                   <>
                     <Row gutter={18}>
                       <Col className="gutter-row" span={18}>
-                        <SqlBox value={this.props.details.createStatement} />
+                        <SqlBox
+                          value={
+                            this.props.details.createStatement?.create_statement
+                              ? this.props.details.createStatement
+                                  ?.create_statement
+                              : "(unavailable)\n" +
+                                (this.props.details.createStatement?.error
+                                  ? this.props.details.createStatement?.error
+                                      .message
+                                  : "")
+                          }
+                        />
                       </Col>
                     </Row>
 
@@ -453,15 +467,34 @@ export class DatabaseTablePage extends React.Component<
                         <SummaryCard className={cx("summary-card")}>
                           <SummaryCardItem
                             label="Size"
-                            value={format.Bytes(this.props.details.sizeInBytes)}
+                            value={checkInfoAvailable(
+                              this.props.details.requestError,
+                              this.props.details.spanStats?.error,
+                              this.props.details.spanStats
+                                ?.approximate_disk_bytes
+                                ? format.Bytes(
+                                    this.props.details.spanStats
+                                      ?.approximate_disk_bytes,
+                                  )
+                                : this.props.details.spanStats
+                                    ?.approximate_disk_bytes,
+                            )}
                           />
                           <SummaryCardItem
                             label="Replicas"
-                            value={this.props.details.replicaCount}
+                            value={checkInfoAvailable(
+                              this.props.details.requestError,
+                              this.props.details.replicaData?.error,
+                              this.props.details.replicaData?.replicaCount,
+                            )}
                           />
                           <SummaryCardItem
                             label="Ranges"
-                            value={this.props.details.rangeCount}
+                            value={checkInfoAvailable(
+                              this.props.details.requestError,
+                              this.props.details.spanStats?.error,
+                              this.props.details.spanStats?.range_count,
+                            )}
                           />
                           <SummaryCardItem
                             label="% of Live Data"
@@ -521,7 +554,11 @@ export class DatabaseTablePage extends React.Component<
                           />
                           <SummaryCardItem
                             label="Indexes"
-                            value={this.props.details.indexNames.join(", ")}
+                            value={checkInfoAvailable(
+                              this.props.details.requestError,
+                              this.props.details.indexData?.error,
+                              this.props.details.indexData?.indexes?.join(", "),
+                            )}
                             className={cx(
                               "database-table-page__indexes--value",
                             )}
@@ -594,7 +631,7 @@ export class DatabaseTablePage extends React.Component<
                 renderError={() =>
                   LoadingError({
                     statsType: "databases",
-                    timeout: this.props.details.lastError?.name
+                    timeout: this.props.details.requestError?.name
                       ?.toLowerCase()
                       .includes("timeout"),
                   })
@@ -605,7 +642,7 @@ export class DatabaseTablePage extends React.Component<
               <Loading
                 loading={this.props.details.loading}
                 page={"table_details_grants"}
-                error={this.props.details.lastError}
+                error={this.props.details.requestError}
                 render={() => (
                   <DatabaseTableGrantsTable
                     data={this.props.details.grants}
@@ -619,7 +656,7 @@ export class DatabaseTablePage extends React.Component<
                 renderError={() =>
                   LoadingError({
                     statsType: "databases",
-                    timeout: this.props.details.lastError?.name
+                    timeout: this.props.details.requestError?.name
                       ?.toLowerCase()
                       .includes("timeout"),
                   })

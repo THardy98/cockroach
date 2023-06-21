@@ -10,9 +10,9 @@
 
 import {
   executeInternalSql,
-  formatApiResult,
   LARGE_RESULT_SIZE,
   LONG_TIMEOUT,
+  safeFormatApiResult,
   SqlApiQueryResponse,
   SqlApiResponse,
   SqlExecutionErrorMessage,
@@ -110,7 +110,7 @@ const getTableId: TableDetailsQuery<TableIdRow> = {
 };
 
 // Table create statement.
-type TableCreateStatementRow = { create_statement: string };
+export type TableCreateStatementRow = { create_statement: string };
 
 const getTableCreateStatement: TableDetailsQuery<TableCreateStatementRow> = {
   createStmt: (dbName, tableName) => {
@@ -131,7 +131,7 @@ const getTableCreateStatement: TableDetailsQuery<TableCreateStatementRow> = {
     if (!txnResultIsEmpty(txn_result)) {
       resp.createStmtResp.create_statement =
         txn_result.rows[0].create_statement;
-    } else {
+    } else if (!txn_result.error) {
       txn_result.error = new Error(
         "getTableCreateStatement: unexpected empty results",
       );
@@ -180,7 +180,7 @@ const getTableGrants: TableDetailsQuery<TableGrantsRow> = {
 };
 
 // Table schema details.
-type TableSchemaDetailsRow = {
+export type TableSchemaDetailsRow = {
   columns: string[];
   indexes: string[];
 };
@@ -329,7 +329,7 @@ const getTableZoneConfig: TableDetailsQuery<TableZoneConfigRow> = {
 };
 
 // Table heuristics details.
-type TableHeuristicDetailsRow = {
+export type TableHeuristicDetailsRow = {
   stats_last_created_at: moment.Moment;
 };
 
@@ -368,7 +368,7 @@ type TableDetailsStats = {
 };
 
 // Table span stats.
-type TableSpanStatsRow = {
+export type TableSpanStatsRow = {
   approximate_disk_bytes: number;
   live_bytes: number;
   total_bytes: number;
@@ -415,7 +415,7 @@ const getTableSpanStats: TableDetailsQuery<TableSpanStatsRow> = {
   },
 };
 
-type TableReplicaData = SqlApiQueryResponse<{
+export type TableReplicaData = SqlApiQueryResponse<{
   nodeIDs: number[];
   nodeCount: number;
   replicaCount: number;
@@ -468,7 +468,7 @@ const getTableReplicas: TableDetailsQuery<TableReplicasRow> = {
 };
 
 // Table index usage stats.
-type TableIndexUsageStats = {
+export type TableIndexUsageStats = {
   has_index_recommendations: boolean;
 };
 
@@ -563,6 +563,7 @@ export function createTableDetailsReq(
     max_result_size: LARGE_RESULT_SIZE,
     timeout: LONG_TIMEOUT,
     database: dbName,
+    separate_txns: true,
   };
 }
 
@@ -590,16 +591,14 @@ async function fetchTableDetails(
   );
   const resp = await executeInternalSql<TableDetailsRow>(req);
   resp.execution.txn_results.forEach(txn_result => {
-    if (txn_result.rows) {
-      const query: TableDetailsQuery<TableDetailsRow> =
-        tableDetailQueries[txn_result.statement - 1];
-      query.addToTableDetail(txn_result, detailsResponse);
-    }
+    const query: TableDetailsQuery<TableDetailsRow> =
+      tableDetailQueries[txn_result.statement - 1];
+    query.addToTableDetail(txn_result, detailsResponse);
   });
   if (resp.error) {
     detailsResponse.error = resp.error;
   }
-  return formatApiResult<TableDetailsResponse>(
+  return safeFormatApiResult<TableDetailsResponse>(
     detailsResponse,
     detailsResponse.error,
     "retrieving table details information",

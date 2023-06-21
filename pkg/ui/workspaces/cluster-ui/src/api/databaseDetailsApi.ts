@@ -18,6 +18,7 @@ import {
   SqlApiResponse,
   SqlExecutionErrorMessage,
   SqlExecutionRequest,
+  sqlResultsAreEmpty,
   SqlStatement,
   SqlTxnResult,
   txnResultIsEmpty,
@@ -99,7 +100,7 @@ const getDatabaseId: DatabaseDetailsQuery<DatabaseIdRow> = {
     response: SqlTxnResult<DatabaseIdRow>,
     dbDetail: DatabaseDetailsResponse,
   ) => {
-    return new Promise<boolean>(() => false);
+    return Promise.resolve(false);
   },
 };
 
@@ -141,12 +142,12 @@ const getDatabaseGrantsQuery: DatabaseDetailsQuery<DatabaseGrantsRow> = {
     response: SqlTxnResult<DatabaseGrantsRow>,
     dbDetail: DatabaseDetailsResponse,
   ) => {
-    return new Promise<boolean>(() => false);
+    return Promise.resolve(false);
   },
 };
 
 // Database Tables
-type DatabaseTablesResponse = {
+export type DatabaseTablesResponse = {
   tables: string[];
 };
 
@@ -175,7 +176,6 @@ const getDatabaseTablesQuery: DatabaseDetailsQuery<DatabaseTablesRow> = {
       if (!resp.tablesResp.tables) {
         resp.tablesResp.tables = [];
       }
-
       txn_result.rows.forEach(row => {
         const escTableName = new QualifiedIdentifier([
           row.table_schema,
@@ -282,7 +282,7 @@ const getDatabaseZoneConfig: DatabaseDetailsQuery<DatabaseZoneConfigRow> = {
       }
     }
     if (txn_result.error) {
-      resp.idResp.error = txn_result.error;
+      resp.zoneConfigResp.error = txn_result.error;
     }
   },
   handleMaxSizeError: (
@@ -290,7 +290,7 @@ const getDatabaseZoneConfig: DatabaseDetailsQuery<DatabaseZoneConfigRow> = {
     response: SqlTxnResult<DatabaseZoneConfigRow>,
     dbDetail: DatabaseDetailsResponse,
   ) => {
-    return new Promise<boolean>(() => false);
+    return Promise.resolve(false);
   },
 };
 
@@ -301,7 +301,7 @@ type DatabaseDetailsStats = {
   indexStats: SqlApiQueryResponse<DatabaseIndexUsageStatsResponse>;
 };
 
-type DatabaseSpanStatsRow = {
+export type DatabaseSpanStatsRow = {
   approximate_disk_bytes: number;
   live_bytes: number;
   total_bytes: number;
@@ -347,7 +347,7 @@ const getDatabaseSpanStats: DatabaseDetailsQuery<DatabaseSpanStatsRow> = {
     response: SqlTxnResult<DatabaseSpanStatsRow>,
     dbDetail: DatabaseDetailsResponse,
   ) => {
-    return new Promise<boolean>(() => false);
+    return Promise.resolve(false);
   },
 };
 
@@ -396,7 +396,7 @@ const getDatabaseReplicasAndRegions: DatabaseDetailsQuery<DatabaseReplicasRegion
       response: SqlTxnResult<DatabaseReplicasRegionsRow>,
       dbDetail: DatabaseDetailsResponse,
     ) => {
-      return new Promise<boolean>(() => false);
+      return Promise.resolve(false);
     },
   };
 
@@ -450,7 +450,7 @@ const getDatabaseIndexUsageStats: DatabaseDetailsQuery<IndexUsageStatistic> = {
     response: SqlTxnResult<IndexUsageStatistic>,
     dbDetail: DatabaseDetailsResponse,
   ) => {
-    return new Promise<boolean>(() => false);
+    return Promise.resolve(false);
   },
 };
 
@@ -487,10 +487,13 @@ const databaseDetailQueries: DatabaseDetailsQuery<DatabaseDetailsRow>[] = [
 ];
 
 export function createDatabaseDetailsReq(dbName: string): SqlExecutionRequest {
-  return createSqlExecutionRequest(
-    dbName,
-    databaseDetailQueries.map(query => query.createStmt(dbName)),
-  );
+  return {
+    ...createSqlExecutionRequest(
+      dbName,
+      databaseDetailQueries.map(query => query.createStmt(dbName)),
+    ),
+    separate_txns: true,
+  };
 }
 
 export async function getDatabaseDetails(
@@ -507,11 +510,9 @@ async function fetchDatabaseDetails(
   const req: SqlExecutionRequest = createDatabaseDetailsReq(databaseName);
   const resp = await executeInternalSql<DatabaseDetailsRow>(req);
   resp.execution.txn_results.forEach(txn_result => {
-    if (txn_result.rows) {
-      const query: DatabaseDetailsQuery<DatabaseDetailsRow> =
-        databaseDetailQueries[txn_result.statement - 1];
-      query.addToDatabaseDetail(txn_result, detailsResponse);
-    }
+    const query: DatabaseDetailsQuery<DatabaseDetailsRow> =
+      databaseDetailQueries[txn_result.statement - 1];
+    query.addToDatabaseDetail(txn_result, detailsResponse);
   });
   if (resp.error) {
     if (isMaxSizeError(resp.error.message)) {
@@ -522,7 +523,7 @@ async function fetchDatabaseDetails(
   return safeFormatApiResult<DatabaseDetailsResponse>(
     detailsResponse,
     detailsResponse.error,
-    "retrieving database details information",
+    `retrieving database details information for database '${databaseName}'`,
   );
 }
 
@@ -535,10 +536,11 @@ async function fetchSeparatelyDatabaseDetails(
       databaseDetailQuery.createStmt(databaseName),
     ]);
     const resp = await executeInternalSql<DatabaseDetailsRow>(req);
-    const txn_result = resp.execution.txn_results[0];
-    if (txn_result.rows) {
-      databaseDetailQuery.addToDatabaseDetail(txn_result, detailsResponse);
+    if (sqlResultsAreEmpty(resp)) {
+      continue;
     }
+    const txn_result = resp.execution.txn_results[0];
+    databaseDetailQuery.addToDatabaseDetail(txn_result, detailsResponse);
 
     if (resp.error) {
       const handleFailure = await databaseDetailQuery.handleMaxSizeError(
@@ -552,9 +554,9 @@ async function fetchSeparatelyDatabaseDetails(
     }
   }
 
-  return formatApiResult<DatabaseDetailsResponse>(
+  return safeFormatApiResult<DatabaseDetailsResponse>(
     detailsResponse,
     detailsResponse.error,
-    "retrieving database details information",
+    `retrieving database details information for database '${databaseName}'`,
   );
 }

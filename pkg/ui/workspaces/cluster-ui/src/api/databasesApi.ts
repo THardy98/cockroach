@@ -51,7 +51,6 @@ export async function getDatabasesList(
   );
   // Encountered a response level error, or empty response.
   if (resp.error || sqlResultsAreEmpty(resp)) {
-
     return { databases: [], error: resp.error };
   }
 

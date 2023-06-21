@@ -12,7 +12,6 @@ import { DatabasesListResponse, SqlExecutionErrorMessage } from "../api";
 import { DatabasesPageDataDatabase } from "../databasesPage";
 import {
   buildIndexStatToRecommendationsMap,
-  combineLoadingErrors,
   getNodesByRegionString,
   normalizePrivileges,
   normalizeRoles,
@@ -26,7 +25,6 @@ import { DatabaseTablePageDataDetails, IndexStat } from "../databaseTablePage";
 import { IndexStatsState } from "../store/indexStats";
 import { cockroach } from "@cockroachlabs/crdb-protobuf-client";
 import { RecommendationType as RecType } from "../indexDetailsPage";
-import { TableIndexStatsResponse } from "../api/indexDetailsApi";
 type IndexUsageStatistic =
   cockroach.server.serverpb.TableIndexStatsResponse.IExtendedCollectedIndexUsageStatistics;
 const { RecommendationType } = cockroach.sql.IndexRecommendation;
@@ -71,8 +69,6 @@ const deriveDatabaseDetails = (
   isTenant: boolean,
 ): DatabasesPageDataDatabase => {
   const dbStats = dbDetails?.data?.results.stats;
-  const sizeInBytes = dbStats?.spanStats?.approximate_disk_bytes || 0;
-  const rangeCount = dbStats?.spanStats.range_count || 0;
   const nodes = dbStats?.replicaData.replicas || [];
   const nodesByRegionString = getNodesByRegionString(
     nodes,
@@ -82,20 +78,14 @@ const deriveDatabaseDetails = (
   const numIndexRecommendations =
     dbStats?.indexStats.num_index_recommendations || 0;
 
-  const combinedErr = combineLoadingErrors(
-    dbDetails?.lastError,
-    dbDetails?.data?.maxSizeReached,
-    dbListError?.message,
-  );
-
   return {
     loading: !!dbDetails?.inFlight,
     loaded: !!dbDetails?.valid,
-    lastError: combinedErr,
+    requestError: dbDetails?.lastError,
+    queryError: dbDetails?.data?.results?.error,
     name: database,
-    sizeInBytes: sizeInBytes,
-    tableCount: dbDetails?.data?.results.tablesResp.tables?.length || 0,
-    rangeCount: rangeCount,
+    spanStats: dbStats?.spanStats,
+    tables: dbDetails?.data?.results.tablesResp,
     nodes: nodes,
     nodesByRegionString,
     numIndexRecommendations,
@@ -149,24 +139,17 @@ const deriveDatabaseTableDetails = (
     name: table,
     loading: !!details?.inFlight,
     loaded: !!details?.valid,
-    lastError: details?.lastError,
+    requestError: details?.lastError,
+    queryError: details?.data?.results?.error,
     details: {
-      columnCount: results?.schemaDetails.columns?.length || 0,
-      indexCount: results?.schemaDetails.indexes.length || 0,
+      schemaDetails: results?.schemaDetails,
       userCount: normalizedRoles.length,
       roles: normalizedRoles,
       grants: normalizedPrivileges,
-      statsLastUpdated:
-        results?.heuristicsDetails.stats_last_created_at || null,
-      hasIndexRecommendations:
-        results?.stats.indexStats.has_index_recommendations || false,
-      totalBytes: results?.stats?.spanStats.total_bytes || 0,
-      liveBytes: results?.stats?.spanStats.live_bytes || 0,
-      livePercentage: results?.stats?.spanStats.live_percentage || 0,
-      replicationSizeInBytes:
-        results?.stats?.spanStats.approximate_disk_bytes || 0,
+      statsLastUpdated: results?.heuristicsDetails,
+      indexStatRecs: results?.stats.indexStats,
+      spanStats: results?.stats.spanStats,
       nodes: nodes,
-      rangeCount: results?.stats?.spanStats.range_count || 0,
       nodesByRegionString: getNodesByRegionString(nodes, nodeRegions, isTenant),
     },
   };
@@ -194,18 +177,15 @@ export const deriveTablePageDetailsMemoized = createSelector(
     return {
       loading: !!details?.inFlight,
       loaded: !!details?.valid,
-      lastError: details?.lastError,
-      createStatement: results?.createStmtResp.create_statement || "",
-      replicaCount: results?.stats.replicaData.replicaCount || 0,
-      indexNames: results?.schemaDetails.indexes || [],
+      requestError: details?.lastError,
+      queryError: results?.error,
+      createStatement: results?.createStmtResp,
+      replicaData: results?.stats?.replicaData,
+      indexData: results?.schemaDetails,
       grants: normalizedGrants,
       statsLastUpdated:
         results?.heuristicsDetails.stats_last_created_at || null,
-      totalBytes: results?.stats.spanStats.total_bytes || 0,
-      liveBytes: results?.stats.spanStats.live_bytes || 0,
-      livePercentage: results?.stats.spanStats.live_percentage || 0,
-      sizeInBytes: results?.stats.spanStats.approximate_disk_bytes || 0,
-      rangeCount: results?.stats.spanStats.range_count || 0,
+      spanStats: results?.stats?.spanStats,
       nodesByRegionString: getNodesByRegionString(nodes, nodeRegions, isTenant),
     };
   },

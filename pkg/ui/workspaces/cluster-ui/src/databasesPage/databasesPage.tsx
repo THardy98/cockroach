@@ -47,6 +47,16 @@ import { merge } from "lodash";
 import { UIConfigState } from "src/store";
 import { TableStatistics } from "../tableStatistics";
 import { DatabaseNameCell, IndexRecCell } from "./helperComponents";
+import {
+  DatabaseSpanStatsRow,
+  DatabaseTablesResponse,
+  isMaxSizeError,
+  SqlApiQueryResponse,
+  SqlExecutionErrorMessage,
+} from "../api";
+import { InlineAlert } from "@cockroachlabs/ui-components";
+import { Caution } from "@cockroachlabs/icons";
+import { checkInfoAvailable } from "src/databases/helpers";
 
 const cx = classNames.bind(styles);
 const sortableTableCx = classNames.bind(sortableTableStyles);
@@ -84,7 +94,10 @@ const booleanSettingCx = classnames.bind(booleanSettingStyles);
 export interface DatabasesPageData {
   loading: boolean;
   loaded: boolean;
-  lastError: Error;
+  // Request error when getting databases
+  requestError: Error;
+  // Query error when getting databases
+  queryError: SqlExecutionErrorMessage;
   databases: DatabasesPageDataDatabase[];
   sortSetting: SortSetting;
   search: string;
@@ -99,11 +112,13 @@ export interface DatabasesPageData {
 export interface DatabasesPageDataDatabase {
   loading: boolean;
   loaded: boolean;
-  lastError: Error;
+  // Request error when getting database details
+  requestError: Error;
+  // Query error when getting database details
+  queryError: SqlExecutionErrorMessage;
   name: string;
-  sizeInBytes: number;
-  tableCount: number;
-  rangeCount: number;
+  spanStats?: SqlApiQueryResponse<DatabaseSpanStatsRow>;
+  tables?: SqlApiQueryResponse<DatabaseTablesResponse>;
   // Array of node IDs used to unambiguously filter by node and region.
   nodes?: number[];
   // String of nodes grouped by region in alphabetical order, e.g.
@@ -248,7 +263,7 @@ export class DatabasesPage extends React.Component<
     if (
       !this.props.loaded &&
       !this.props.loading &&
-      this.props.lastError === undefined
+      this.props.requestError === undefined
     ) {
       return this.props.refreshDatabases();
     } else {
@@ -285,7 +300,8 @@ export class DatabasesPage extends React.Component<
     }
     if (
       prevProp.indexRecommendationsEnabled !==
-      this.props.indexRecommendationsEnabled
+        this.props.indexRecommendationsEnabled ||
+      prevProp.showNodeRegionsColumn !== this.props.showNodeRegionsColumn
     ) {
       this.setState({ columns: this.columns() });
     }
@@ -319,8 +335,8 @@ export class DatabasesPage extends React.Component<
     }
 
     filteredDbs.forEach(database => {
-      if (database.lastError) {
-        lastDetailsError = database.lastError;
+      if (database.requestError) {
+        lastDetailsError = database.requestError;
       }
 
       if (
@@ -333,7 +349,7 @@ export class DatabasesPage extends React.Component<
       if (
         !database.loaded &&
         !database.loading &&
-        database.lastError === undefined
+        database.requestError === undefined
       ) {
         this.props.refreshDatabaseDetails(database.name);
       }
@@ -498,7 +514,7 @@ export class DatabasesPage extends React.Component<
       i++
     ) {
       const db = filteredDatabases[i];
-      if (db.loaded || db.loading || db.lastError != undefined) {
+      if (db.loaded || db.loading || db.requestError != undefined) {
         continue;
       }
       // Info is not loaded for a visible database.
@@ -507,19 +523,6 @@ export class DatabasesPage extends React.Component<
 
     return false;
   }
-
-  checkInfoAvailable = (
-    database: DatabasesPageDataDatabase,
-    cell: React.ReactNode,
-  ): React.ReactNode => {
-    if (
-      database.lastError &&
-      database.lastError.name !== "GetDatabaseInfoError"
-    ) {
-      return "(unavailable)";
-    }
-    return cell;
-  };
 
   private columns(): ColumnDescriptor<DatabasesPageDataDatabase>[] {
     const columns: ColumnDescriptor<DatabasesPageDataDatabase>[] = [
@@ -543,9 +546,16 @@ export class DatabasesPage extends React.Component<
             Size
           </Tooltip>
         ),
-        cell: database =>
-          this.checkInfoAvailable(database, format.Bytes(database.sizeInBytes)),
-        sort: database => database.sizeInBytes,
+        cell: database => {
+          return checkInfoAvailable(
+            database.requestError,
+            database.spanStats?.error,
+            database.spanStats?.approximate_disk_bytes
+              ? format.Bytes(database.spanStats?.approximate_disk_bytes)
+              : database.spanStats?.approximate_disk_bytes,
+          );
+        },
+        sort: database => database.spanStats?.approximate_disk_bytes,
         className: cx("databases-table__col-size"),
         name: "size",
       },
@@ -559,8 +569,12 @@ export class DatabasesPage extends React.Component<
           </Tooltip>
         ),
         cell: database =>
-          this.checkInfoAvailable(database, database.tableCount),
-        sort: database => database.tableCount,
+          checkInfoAvailable(
+            database.requestError,
+            database.tables?.error,
+            database.tables?.tables?.length,
+          ),
+        sort: database => database.tables?.tables.length ?? 0,
         className: cx("databases-table__col-table-count"),
         name: "tableCount",
       },
@@ -574,8 +588,12 @@ export class DatabasesPage extends React.Component<
           </Tooltip>
         ),
         cell: database =>
-          this.checkInfoAvailable(database, database.rangeCount),
-        sort: database => database.rangeCount,
+          checkInfoAvailable(
+            database.requestError,
+            database.spanStats?.error,
+            database.spanStats?.range_count,
+          ),
+        sort: database => database.spanStats?.range_count,
         className: cx("databases-table__col-range-count"),
         name: "rangeCount",
       },
@@ -589,9 +607,10 @@ export class DatabasesPage extends React.Component<
           </Tooltip>
         ),
         cell: database =>
-          this.checkInfoAvailable(
-            database,
-            database.nodesByRegionString || "None",
+          checkInfoAvailable(
+            database.requestError,
+            null,
+            database.nodesByRegionString ? database.nodesByRegionString : null,
           ),
         sort: database => database.nodesByRegionString,
         className: cx("databases-table__col-node-regions"),
@@ -707,40 +726,50 @@ export class DatabasesPage extends React.Component<
           <Loading
             loading={this.props.loading}
             page={"databases"}
-            error={this.props.lastError}
-            render={() => (
-              <DatabasesSortedTable
-                className={cx("databases-table")}
-                tableWrapperClassName={cx("sorted-table")}
-                data={databasesToDisplay}
-                columns={displayColumns}
-                sortSetting={this.props.sortSetting}
-                onChangeSortSetting={this.changeSortSetting}
-                pagination={this.state.pagination}
-                loading={this.props.loading}
-                disableSortSizeLimit={disableTableSortSize}
-                renderNoResult={
-                  <div
-                    className={cx(
-                      "databases-table__no-result",
-                      "icon__container",
-                    )}
-                  >
-                    <StackIcon className={cx("icon--s")} />
-                    This cluster has no databases.
-                  </div>
-                }
-              />
-            )}
+            error={this.props.requestError}
             renderError={() =>
               LoadingError({
                 statsType: "databases",
-                timeout: this.props.lastError?.name
+                timeout: this.props.requestError?.name
                   ?.toLowerCase()
                   .includes("timeout"),
               })
             }
-          />
+          >
+            {isMaxSizeError(this.props.queryError?.message) && (
+              <InlineAlert
+                intent="info"
+                title={
+                  <>
+                    Not all databases are displayed because the maximum number
+                    of databases was reached in the console.&nbsp;
+                  </>
+                }
+              />
+            )}
+            <DatabasesSortedTable
+              className={cx("databases-table")}
+              tableWrapperClassName={cx("sorted-table")}
+              data={databasesToDisplay}
+              columns={displayColumns}
+              sortSetting={this.props.sortSetting}
+              onChangeSortSetting={this.changeSortSetting}
+              pagination={this.state.pagination}
+              loading={this.props.loading}
+              disableSortSizeLimit={disableTableSortSize}
+              renderNoResult={
+                <div
+                  className={cx(
+                    "databases-table__no-result",
+                    "icon__container",
+                  )}
+                >
+                  <StackIcon className={cx("icon--s")} />
+                  This cluster has no databases.
+                </div>
+              }
+            />
+          </Loading>
           {!this.props.loading && (
             <Loading
               loading={this.props.loading}

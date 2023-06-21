@@ -53,11 +53,8 @@ const mapStateToProps = (
   return {
     loading: !!databaseDetails[database]?.inFlight,
     loaded: !!databaseDetails[database]?.valid,
-    lastError: combineLoadingErrors(
-      databaseDetails[database]?.lastError,
-      databaseDetails[database]?.data?.maxSizeReached,
-      null,
-    ),
+    requestError: databaseDetails[database]?.lastError,
+    queryError: databaseDetails[database]?.data?.results?.error ?? null,
     name: database,
     showNodeRegionsColumn: Object.keys(nodeRegions).length > 1 && !isTenant,
     viewMode: selectDatabaseDetailsViewModeSetting(state),
